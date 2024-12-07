@@ -1,49 +1,49 @@
-const { fetchStatus } = require('./services/apiServices');
-const fs = require('fs').promises;
-const fsStream = require('fs');
-const csv = require("csv-parser");
+const { callAPI } = require('./services/apiService');
+const fs = require('fs');
+const csv = require('csv-parser');
 
-const msisdnfilename = process.argv[2] || 'eSIMNewLine';
-// const msisdnfilename = "eSIMNewLine"; //hardcoded method
-const INPUT_FILE = `./testData/${msisdnfilename}.csv`;
-const OUTPUT_FILE = `./result/results_${msisdnfilename}.json`;
+// Function to process CSV and call APIs
+const processCSV = async (filePath, apiName) => {
+  const results = [];
 
-const readMsisdnListCsv = (filePath) => {
   return new Promise((resolve, reject) => {
-    const results = [];
-    fsStream.createReadStream(filePath)
-      .pipe(csv()) // Process rows in CSV
-      .on('data', (data) => {
-        results.push(data); t
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', async (row) => {
+        try {
+          const response = await callAPI(apiName, row);
+          results.push({ ...row, response });
+        } catch (error) {
+          results.push({ ...row, error: error.message });
+        }
       })
       .on('end', () => {
-        resolve(results); // Resolve the promise with the results array
+        resolve(results);
       })
-      .on('error', (err) => {
-        console.error("Error reading the file:", err); 
-        reject(err); // Reject the promise on error
+      .on('error', (error) => {
+        reject(error);
       });
   });
-}; 
-
-const run = async () => {
-  try {
-    const msisdnList = await readMsisdnListCsv(INPUT_FILE);
-    const results = [];
-    
-    for (const entry of msisdnList) { 
-      const msisdn = entry.msisdn;
-      const telco = entry.telco;
-      console.log(`Processing MSISDN: ${msisdn} ${telco}`);  
-      const result = await fetchStatus(msisdn, telco); 
-      results.push(result);
-    }
-
-    await fs.writeFile(OUTPUT_FILE, JSON.stringify(results, null, 2));
-    console.log(`Validation completed. Results saved to ${OUTPUT_FILE}`);
-  } catch (error) {
-    console.error("Error during execution:", error.message);
-  }
 };
 
-run();
+(async () => {
+  try {
+    // Get user inputs for filename and API name
+    const [filename, apiName] = process.argv.slice(2);
+
+    if (!filename || !apiName) {
+      console.error('Usage: node mainApp.js <filename> <apiName>');
+      process.exit(1);
+    }
+
+    const csvFilePath = `./testData/${filename}`;
+    const results = await processCSV(csvFilePath, apiName);
+
+    const outputFileName = `./result/result_${filename.split('.')[0]}.json`;
+    fs.writeFileSync(outputFileName, JSON.stringify(results, null, 2));
+
+    console.log(`Results saved to ${outputFileName}`);
+  } catch (error) {
+    console.error('Error processing file:', error.message);
+  }
+})();
